@@ -10,42 +10,53 @@ import { paintBackground } from "./painter.mjs";
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c]);
 
 /**
- * Layout for `party` and `npcs` (arrays of members) on a grid of S px.
- * Returns { W, H, slots: [{id, side, x, y, cw, ch, tx, ty, tp}], ... } with x/y relative to the tile.
+ * Layout for `party` and `npcs` on a grid of G px.
+ * Everything (margins, rolls, text) scales with the default card size, so the scroll keeps its
+ * proportions when it is resized. Each card follows the aspect of its token picture (m.ar = w / h).
+ * Returns { W, H, S (scroll unit), slots: [{id, side, size, x, y, cw, ch, fh, tx, ty, tokW, tokH}] }.
  */
-export function computeLayout(look, party, npcs, S) {
+export function computeLayout(look, party, npcs, G) {
+  const slot = Math.max(0.5, Math.min(4, Number(look.slot) || 1.25));
+  const U = slot * G * 0.8;                       // scroll unit
   const ends = BACKGROUNDS[look.bg]?.ends === "scroll";
-  const endW = ends ? 0.6 * S : 0;
-  const padX = 0.45 * S;
-  const labelRow = npcs.length ? 0.34 * S : 0;
-  const titleRow = look.title ? 0.55 * S : 0;
-  const padTop = 0.3 * S + Math.max(titleRow, labelRow);
-  const padBottom = 0.32 * S;
+  const endW = ends ? 0.5 * U : 0;
+  const padX = 0.32 * U;
+  const labelRow = npcs.length ? 0.3 * U : 0;
+  const titleRow = look.title ? 0.46 * U : 0;
+  const padTop = 0.2 * U + Math.max(titleRow, labelRow);
+  const padBottom = 0.22 * U;
+  const nameH = look.names ? 0.3 * U : 0.06 * U;
   const card = m => {
     const size = memberSize(m, look);
-    const tp = size * S;
-    const cw = tp * 1.18;
-    return { size, tp, cw, ch: cw * (look.names ? 1.32 : 1.12) };
+    const ar = Math.max(0.3, Math.min(3, Number(m.ar) || 1));
+    const tokW = ar < 1 ? size * ar : size;
+    const tokH = ar < 1 ? size : size / ar;
+    const tw = tokW * G;
+    const th = tokH * G;
+    const pad = 0.08 * Math.max(tw, th);
+    const cw = tw + (2 * pad);
+    const fh = th + (2 * pad);
+    return { size, tokW: Math.round(tokW * 100) / 100, tokH: Math.round(tokH * 100) / 100, tw, th, pad, cw, fh, ch: fh + nameH };
   };
   const cards = [...party.map(m => ({ m, side: "party", ...card(m) })), ...npcs.map(m => ({ m, side: "npcs", ...card(m) }))];
-  const maxCh = cards.reduce((v, c) => Math.max(v, c.ch), 1.18 * S * 1.2);
-  const gapOf = c => Math.max(8, 0.2 * c.tp);
-  const divW = npcs.length && party.length ? 0.55 * S : 0;
-  const rowW = list => list.reduce((v, c, i) => v + c.cw + (i ? gapOf(c) : 0), 0);
+  const maxCh = cards.reduce((v, c) => Math.max(v, c.ch), 0) || U;
+  const gap = 0.18 * U;
+  const divW = npcs.length && party.length ? 0.45 * U : 0;
+  const rowW = list => list.reduce((v, c, i) => v + c.cw + (i ? gap : 0), 0);
   const pc = cards.filter(c => c.side === "party");
   const nc = cards.filter(c => c.side === "npcs");
-  const sheetW = Math.max(3 * S, (padX * 2) + rowW(pc) + divW + rowW(nc));
+  const sheetW = Math.max(2.5 * U, (padX * 2) + rowW(pc) + divW + rowW(nc));
   const sheetH = padTop + maxCh + padBottom;
-  const rollExtra = ends ? 0.2 * S : 0;
+  const rollExtra = ends ? 0.16 * U : 0;
   const W = Math.round(sheetW + (endW * 2));
   const H = Math.round(sheetH + (rollExtra * 2));
   const base = rollExtra + padTop + maxCh;        // cards stand on one baseline
   const slots = [];
   let x = endW + padX;
   const place = (c, i) => {
-    if ( i ) x += gapOf(c);
+    if ( i ) x += gap;
     const y = base - c.ch;
-    slots.push({ id: c.m.id, side: c.side, size: c.size, S, x, y, cw: c.cw, ch: c.ch, tx: x + ((c.cw - c.tp) / 2), ty: y + ((c.cw - c.tp) / 2), tp: c.tp });
+    slots.push({ id: c.m.id, side: c.side, size: c.size, S: U, x, y, cw: c.cw, ch: c.ch, fh: c.fh, tx: x + c.pad, ty: y + c.pad, tokW: c.tokW, tokH: c.tokH, tp: Math.max(c.tw, c.th) });
     x += c.cw;
   };
   pc.forEach(place);
@@ -53,8 +64,8 @@ export function computeLayout(look, party, npcs, S) {
   x = npcStart;
   nc.forEach(place);
   return {
-    W, H, S, slot: Number(look.slot) || 1.25, endW, rollExtra, sheetW, sheetH, padTop, labelRow, titleRow,
-    labelY: rollExtra + padTop - (0.12 * S),
+    W, H, S: U, G, slot, endW, rollExtra, sheetW, sheetH, padTop, labelRow, titleRow,
+    labelY: rollExtra + padTop - (0.1 * U),
     divX: pc.length && nc.length ? npcStart - (divW / 2) : null,
     npcX0: npcStart, npcX1: x, slots
   };
@@ -163,7 +174,7 @@ function flourish(px, py, rot, size) {
 
 function frameSVG(kind, s, member, look) {
   const { x, y, cw } = s;
-  const fh = cw;                       // frame around the token square
+  const fh = s.fh ?? cw;               // frame around the token picture
   const hostile = s.side === "npcs" && (member.disposition ?? -1) <= -1;
   const filt = hostile ? `filter="url(#fr-red)"` : `filter="url(#fr-shadow)"`;
   let out = "";
@@ -193,13 +204,13 @@ function frameSVG(kind, s, member, look) {
       out = `<g ${filt} transform="rotate(${(s.x % 3) - 1.5} ${x + (cw / 2)} ${y + (fh / 2)})"><rect x="${x - (cw * 0.03)}" y="${y - (cw * 0.03)}" width="${cw * 1.06}" height="${s.ch}" fill="#fdfdf8"/><rect x="${x + (cw * 0.04)}" y="${y + (cw * 0.04)}" width="${cw * 0.92}" height="${fh * 0.92}" fill="#d8dde4"/></g>`;
       break;
     case "medalhao":
-      out = `<g ${filt}><circle cx="${x + (cw / 2)}" cy="${y + (fh / 2)}" r="${cw / 2}" fill="url(#fr-gold)" stroke="#6a400c" stroke-width="1.5"/><circle cx="${x + (cw / 2)}" cy="${y + (fh / 2)}" r="${cw * 0.42}" fill="url(#fr-mat)"/></g>`;
+      out = `<g ${filt}><ellipse cx="${x + (cw / 2)}" cy="${y + (fh / 2)}" rx="${cw / 2}" ry="${fh / 2}" fill="url(#fr-gold)" stroke="#6a400c" stroke-width="1.5"/><ellipse cx="${x + (cw / 2)}" cy="${y + (fh / 2)}" rx="${cw * 0.42}" ry="${fh * 0.42}" fill="url(#fr-mat)"/></g>`;
       break;
     case "hexagono": {
       const cx = x + (cw / 2);
       const cy = y + (fh / 2);
-      const hex = r => Array.from({ length: 6 }, (_, i) => `${cx + (r * Math.cos((Math.PI / 3 * i) - (Math.PI / 2)))},${cy + (r * Math.sin((Math.PI / 3 * i) - (Math.PI / 2)))}`).join(" ");
-      out = `<g ${filt}><polygon points="${hex(cw * 0.56)}" fill="url(#fr-gold)" stroke="#6a400c" stroke-width="1.5"/><polygon points="${hex(cw * 0.48)}" fill="url(#fr-mat)"/></g>`;
+      const hex = k => Array.from({ length: 6 }, (_, i) => `${cx + ((cw * 0.56 * k) * Math.cos((Math.PI / 3 * i) - (Math.PI / 2)))},${cy + ((fh * 0.56 * k) * Math.sin((Math.PI / 3 * i) - (Math.PI / 2)))}`).join(" ");
+      out = `<g ${filt}><polygon points="${hex(1)}" fill="url(#fr-gold)" stroke="#6a400c" stroke-width="1.5"/><polygon points="${hex(0.86)}" fill="url(#fr-mat)"/></g>`;
       break;
     }
     case "scifi": {
@@ -213,7 +224,7 @@ function frameSVG(kind, s, member, look) {
     const ny = y + fh + (s.ch - fh) / 2;
     const nameColor = s.side === "npcs" ? (hostile ? "#7a1010" : member.disposition === 0 ? "#6e5a14" : "#145a32") : "#3c240e";
     const label = esc(member.name.length > 16 ? `${member.name.slice(0, 15)}…` : member.name);
-    const fsz = Math.max(10, Math.min(cw * 0.13, (s.S ?? 100) * 0.2));
+    const fsz = Math.max(9, Math.min(Math.max(cw * 0.14, (s.S ?? 100) * 0.12), (s.S ?? 100) * 0.17));
     const tw = Math.min(cw * 1.1, (label.length * fsz * 0.58) + (fsz * 1.2));
     out += `<rect x="${x + (cw / 2) - (tw / 2)}" y="${ny - (fsz * 0.75)}" width="${tw}" height="${fsz * 1.5}" rx="3" fill="${nameColor}" opacity=".9"/>
       <text x="${x + (cw / 2)}" y="${ny + (fsz * 0.35)}" font-family="Georgia, 'Times New Roman', serif" font-weight="bold" font-size="${fsz}" fill="#fbe9b8" text-anchor="middle">${label}</text>`;

@@ -51,7 +51,41 @@ const snapshot = t => {
 
 function restoreData(m) {
   const o = m.orig ?? { width: 1, height: 1, locked: false };
-  return { width: o.width, height: o.height, locked: o.locked };
+  const out = { width: o.width, height: o.height, locked: o.locked };
+  if ( o.texture ) {
+    for ( const k of ["scaleX", "scaleY", "anchorX", "anchorY", "fit"] ) if ( o.texture[k] !== undefined ) out[`texture.${k}`] = o.texture[k];
+  }
+  return out;
+}
+
+const texOf = t => {
+  const x = t?.texture ?? {};
+  return { scaleX: x.scaleX ?? 1, scaleY: x.scaleY ?? 1, anchorX: x.anchorX ?? 0.5, anchorY: x.anchorY ?? 0.5, fit: x.fit ?? "contain" };
+};
+
+/** While on the scroll the picture fills its footprint exactly (no extra scale / foot anchor). */
+function scrollTexture(m) {
+  const o = m.orig?.texture ?? {};
+  return {
+    "texture.scaleX": (o.scaleX ?? 1) < 0 ? -1 : 1, "texture.scaleY": (o.scaleY ?? 1) < 0 ? -1 : 1,
+    "texture.anchorX": 0.5, "texture.anchorY": 0.5, "texture.fit": "contain"
+  };
+}
+
+const arCache = new Map();
+/** Width / height of a picture (cached). */
+async function aspectOf(src) {
+  if ( !src ) return 1;
+  if ( arCache.has(src) ) return arCache.get(src);
+  const ar = await new Promise(res => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => res(img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 1);
+    img.onerror = () => res(1);
+    img.src = src;
+  });
+  arCache.set(src, ar);
+  return ar;
 }
 
 /* ------------------------------------------------------------------ */
@@ -86,15 +120,26 @@ async function layoutOnce(scene, force) {
   const before = JSON.stringify(board);
   const { party, npcs } = shownMembers(board, scene);
   const S = scene.grid.size;
+  /* each card follows the shape of its token picture */
+  for ( const m of [...party, ...npcs] ) {
+    const t = tokenIn(m, scene);
+    const src = t?.texture?.src ?? m.tokenData?.texture?.src ?? m.img;
+    if ( src && m.arSrc !== src ) {
+      m.ar = Math.round((await aspectOf(src)) * 1000) / 1000;
+      m.arSrc = src;
+    }
+  }
   const L = computeLayout(board.look, party, npcs, S);
   const members = [...party, ...npcs];
 
   /* 1. picture */
-  const key = JSON.stringify({ v: 3, l: board.look, S, m: members.map(m => [m.id, m.name, m.disposition, memberSize(m, board.look)]) });
+  const key = JSON.stringify({ v: 4, l: board.look, S, m: members.map(m => [m.id, m.name, m.disposition, memberSize(m, board.look), m.ar ?? 1]) });
   if ( force || tile.getFlag(MODULE_ID, "key") !== key ) {
     const file = await rasterize(buildSVG(board.look, L, members), L.W, L.H, `pergaminho-${scene.id}-${Date.now()}`, 2, board.look, L);
     const src = await uploadArt(file);
-    await tile.update({ "texture.src": src, width: L.W, height: L.H, [`flags.${MODULE_ID}.key`]: key, [`flags.${MODULE_ID}.W`]: L.W }, { aliInternal: true });
+    await tile.update({ "texture.src": src, width: L.W, height: L.H, [`flags.${MODULE_ID}.key`]: key, [`flags.${MODULE_ID}.W`]: L.W, [`flags.${MODULE_ID}.H`]: L.H }, { aliInternal: true });
+  } else if ( tile.width !== L.W || tile.height !== L.H ) {
+    await tile.update({ width: L.W, height: L.H, [`flags.${MODULE_ID}.W`]: L.W, [`flags.${MODULE_ID}.H`]: L.H }, { aliInternal: true });
   }
 
   /* 2. tokens into their frames */
@@ -102,16 +147,22 @@ async function layoutOnce(scene, force) {
   const updates = [];
   for ( const s of L.slots ) {
     const m = members.find(x => x.id === s.id);
-    const pos = { x: Math.round(tile.x + s.tx), y: Math.round(tile.y + s.ty), width: s.size, height: s.size, locked: !!board.look.lock };
+    const pos = { x: Math.round(tile.x + s.tx), y: Math.round(tile.y + s.ty), width: s.tokW, height: s.tokH, locked: !!board.look.lock };
     const t = tokenIn(m, scene);
     if ( t ) {
       if ( !m.orig ) m.orig = { width: t.width, height: t.height, locked: !!t.locked };
+      if ( !m.orig.texture ) m.orig.texture = texOf(t);
       m.tokenId = t.id;
       m.sceneId = scene.id;
-      if ( t.x !== pos.x || t.y !== pos.y || t.width !== pos.width || t.height !== pos.height || !!t.locked !== pos.locked ) updates.push({ _id: t.id, ...pos });
+      const tex = scrollTexture(m);
+      const cur = texOf(t);
+      const texDiff = cur.scaleX !== tex["texture.scaleX"] || cur.scaleY !== tex["texture.scaleY"] || cur.anchorX !== 0.5 || cur.anchorY !== 0.5 || cur.fit !== "contain";
+      if ( t.x !== pos.x || t.y !== pos.y || t.width !== pos.width || t.height !== pos.height || !!t.locked !== pos.locked || texDiff ) updates.push({ _id: t.id, ...pos, ...tex });
     } else {
       const data = foundry.utils.deepClone(m.tokenData ?? {});
       if ( !m.orig ) m.orig = { width: data.width ?? 1, height: data.height ?? 1, locked: !!data.locked };
+      if ( !m.orig.texture ) m.orig.texture = texOf(data);
+      foundry.utils.mergeObject(data, foundry.utils.expandObject(scrollTexture(m)));
       if ( !data.actorId && m.actorUuid?.startsWith("Actor.") ) data.actorId = m.actorUuid.split(".").pop();
       data.name ??= m.name;
       create.push({ member: m, data: { ...data, ...pos } });
@@ -288,9 +339,13 @@ export async function onUpdateTile(tile, changes, options) {
   if ( board.tileId !== tile.id ) return;
   if ( "width" in changes || "height" in changes ) {
     const oldW = Number(tile.getFlag(MODULE_ID, "W")) || tile.width;
-    const ratio = (changes.width ?? tile.width) / oldW;
+    const oldH = Number(tile.getFlag(MODULE_ID, "H")) || tile.height;
+    const rw = (changes.width ?? oldW) / oldW;
+    const rh = (changes.height ?? oldH) / oldH;
+    /* the side that was dragged more decides (dragging only one side still works) */
+    const ratio = Math.abs(rw - 1) >= Math.abs(rh - 1) ? rw : rh;
     if ( Number.isFinite(ratio) && Math.abs(ratio - 1) > 0.02 ) {
-      const q = v => Math.max(0.5, Math.min(4, Math.round(v * ratio * 4) / 4));
+      const q = v => Math.max(0.5, Math.min(4, Math.round(v * ratio * 20) / 20));
       board.look.slot = q(Number(board.look.slot) || 1.25);
       for ( const m of [...board.party, ...board.npcs] ) if ( m.size ) m.size = q(Number(m.size));
       await saveBoard(board);

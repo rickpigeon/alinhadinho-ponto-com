@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.1 — 2026-11-19
+
+- **Redimensionar ficou estável.**
+  - Margens, rolos, título e etiquetas escalam junto com as cartas, então o pergaminho mantém a proporção e não sobra espaço em cima.
+  - Vale o lado que você puxou mais, em passos finos de 0,05.
+- **Cada carta segue a proporção da imagem do token:** cartas retangulares (retrato) ganham moldura retangular e o token fica com a mesma forma.
+- Enquanto está no pergaminho, a escala e a âncora da textura do token são zeradas para a imagem caber exatamente na moldura. Ao soltar, guardar ou tirar do alinhadinho, a escala, a âncora, o espelhamento e o tamanho originais voltam.
+- Medalhão e hexágono acompanham cartas retangulares.
+
 ## 1.2.0 — 2026-11-19
 
 - **Tamanho individual por carta**, de 0,5 a 4 espaços. Há três formas de mudar:

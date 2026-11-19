@@ -103,7 +103,7 @@ function innerRim(ctx, pts, width, color) {
 /* ------------------------------------------------------------------ */
 
 function parchmentSheet(ctx, rng, L, opts = {}) {
-  const S = L.S;
+  const S = L.S;   // scroll unit (scales with the cards)
   const x = L.endW - (opts.rolls ? S * 0.05 : 0);
   const y = L.rollExtra;
   const w = L.sheetW + (opts.rolls ? S * 0.1 : 0);
@@ -210,7 +210,7 @@ function chartMarks(ctx, rng, x, y, w, h, S) {
 
 /** Rolled paper at both ends, with the spiral visible on the caps and wooden finials. */
 function rolls(ctx, L, colors) {
-  const S = L.S;
+  const S = L.S;   // scroll unit (scales with the cards)
   const rw = S * 0.34;
   const H = L.H;
   for ( const side of [0, 1] ) {
@@ -268,7 +268,7 @@ function rolls(ctx, L, colors) {
 }
 
 function leather(ctx, rng, L) {
-  const S = L.S;
+  const S = L.S;   // scroll unit (scales with the cards)
   const x = L.endW;
   const y = L.rollExtra;
   const w = L.sheetW;
@@ -319,7 +319,7 @@ function leather(ctx, rng, L) {
 }
 
 function wood(ctx, rng, L) {
-  const S = L.S;
+  const S = L.S;   // scroll unit (scales with the cards)
   const x = L.endW;
   const y = L.rollExtra;
   const w = L.sheetW;
@@ -383,7 +383,7 @@ function wood(ctx, rng, L) {
 }
 
 function stone(ctx, rng, L) {
-  const S = L.S;
+  const S = L.S;   // scroll unit (scales with the cards)
   const x = L.endW;
   const y = L.rollExtra;
   const w = L.sheetW;
@@ -436,7 +436,7 @@ function stone(ctx, rng, L) {
 }
 
 function metal(ctx, rng, L) {
-  const S = L.S;
+  const S = L.S;   // scroll unit (scales with the cards)
   const x = L.endW;
   const y = L.rollExtra;
   const w = L.sheetW;
@@ -483,7 +483,7 @@ function metal(ctx, rng, L) {
 }
 
 function banner(ctx, rng, L) {
-  const S = L.S;
+  const S = L.S;   // scroll unit (scales with the cards)
   const x = L.endW;
   const y = L.rollExtra + (S * 0.08);
   const w = L.sheetW;
