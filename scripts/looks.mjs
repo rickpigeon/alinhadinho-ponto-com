@@ -31,8 +31,6 @@ export const FRAMES = {
   nenhuma: { label: "Sem moldura" }
 };
 
-export const SIZES = { p: "Pequeno", m: "Médio", g: "Grande", gg: "Enorme" };
-export const POSITIONS = { baixo: "Embaixo", meio: "No meio", topo: "Em cima" };
 
 /** Golden spiral for the scroll ends (like the reference picture). */
 export const SPIRAL = `<svg viewBox="0 0 60 220" class="ali-spiral" aria-hidden="true">

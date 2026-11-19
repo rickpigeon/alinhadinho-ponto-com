@@ -3,8 +3,8 @@
  * Actors and tokens can be dropped on the window; selected tokens can be added with one click.
  */
 import { MODULE_ID, MODULE_TITLE, getBoard, isPlayerActor, memberFromActor, memberFromToken, mutate } from "./store.mjs";
-import { BACKGROUNDS, FRAMES, POSITIONS, SIZES } from "./looks.mjs";
-import { bringDialog, collectTokens } from "./move.mjs";
+import { BACKGROUNDS, FRAMES } from "./looks.mjs";
+import { bringDialog, relayout, releaseMember, removeScroll, scrollTile, setMemberTokenHidden } from "./scroll.mjs";
 import { guard, guardActions } from "./errors.mjs";
 
 const { ApplicationV2 } = foundry.applications.api;
@@ -19,7 +19,7 @@ export class ManagerApp extends ApplicationV2 {
     window: { title: "Alinhadinho.com", icon: "fa-solid fa-scroll", resizable: true },
     position: { width: 560, height: 720 },
     actions: guardActions({
-      show: ManagerApp.#onShow, hide: ManagerApp.#onHide, bring: ManagerApp.#onBring, collect: ManagerApp.#onCollect,
+      bring: ManagerApp.#onBring, redraw: ManagerApp.#onRedraw, putAway: ManagerApp.#onPutAway, dissolve: ManagerApp.#onDissolve,
       addSelected: ManagerApp.#onAddSelected, addPlayers: ManagerApp.#onAddPlayers,
       remove: ManagerApp.#onRemove, up: ManagerApp.#onUp, down: ManagerApp.#onDown, hideMember: ManagerApp.#onHideMember,
       carry: ManagerApp.#onCarry, swap: ManagerApp.#onSwap, clearNpcs: ManagerApp.#onClearNpcs, refresh: ManagerApp.#onRefresh
@@ -46,7 +46,7 @@ export class ManagerApp extends ApplicationV2 {
 
   #row(m, side) {
     const disp = side === "npcs" ? `<span class="ali-disp ali-d${m.disposition}" data-tooltip="Disposição do token"></span>` : "";
-    const where = game.scenes.get(m.sceneId ?? "")?.tokens.get(m.tokenId ?? "") ? game.scenes.get(m.sceneId).name : "sem token no mapa";
+    const where = game.scenes.get(m.sceneId ?? "")?.tokens.get(m.tokenId ?? "") ? game.scenes.get(m.sceneId).name : "guardado (sem token no mapa)";
     return `<li class="ali-row ${m.hidden ? "ali-ghost" : ""}" data-mid="${m.id}">
       <img src="${esc(m.img || m.portrait)}" alt="">
       <span class="ali-rname">${disp}${esc(m.name)}<small>${esc(where)}</small></span>
@@ -63,17 +63,19 @@ export class ManagerApp extends ApplicationV2 {
     const b = getBoard();
     const l = b.look;
     const scene = game.scenes.get(b.sceneId ?? "");
+    const tile = scrollTile(scene, b);
     const here = canvas?.scene;
-    const status = b.visible && scene ? `Visível em <b>${esc(scene.name)}</b>` : scene ? `Oculto (última cena: ${esc(scene.name)})` : "Ainda não está em nenhuma cena";
+    const status = tile ? `Pergaminho em <b>${esc(scene.name)}</b>` : "O pergaminho não está em nenhuma cena";
     return `<div class="ali-body">
       <section class="ali-box">
         <p>${status}${here && scene?.id !== here.id ? ` · você está vendo <b>${esc(here.name)}</b>` : ""}</p>
         <div class="ali-btns">
-          <button type="button" class="ali-primary" data-action="bring"><i class="fa-solid fa-person-walking-arrow-right"></i> Levar grupo para esta cena…</button>
-          <button type="button" data-action="show" data-tooltip="Só mostra o pergaminho nesta cena, sem mexer nos tokens"><i class="fa-solid fa-scroll"></i> Mostrar aqui</button>
-          <button type="button" data-action="hide"><i class="fa-solid fa-eye-slash"></i> Ocultar</button>
-          <button type="button" data-action="collect" data-tooltip="Tira do mapa desta cena os tokens do alinhadinho (eles continuam no pergaminho)"><i class="fa-solid fa-box-archive"></i> Recolher tokens</button>
+          <button type="button" class="ali-primary" data-action="bring"><i class="fa-solid fa-scroll"></i> ${tile && scene?.id !== here?.id ? "Levar o grupo para esta cena…" : tile ? "Trazer o pergaminho para o centro da tela…" : "Colocar o pergaminho nesta cena…"}</button>
+          ${tile ? `<button type="button" data-action="redraw" data-tooltip="Redesenha o pergaminho e reencaixa os tokens"><i class="fa-solid fa-rotate"></i> Redesenhar</button>
+          <button type="button" data-action="dissolve" data-tooltip="Some o pergaminho; os tokens ficam no mapa, com o tamanho de antes"><i class="fa-solid fa-hand-sparkles"></i> Soltar tokens</button>
+          <button type="button" data-action="putAway" data-tooltip="Guarda o grupo: tira o pergaminho e os tokens do mapa (eles voltam com Colocar/Levar)"><i class="fa-solid fa-box-archive"></i> Guardar grupo</button>` : ""}
         </div>
+        <p class="ali-hint">No mapa, arraste o pergaminho (camada de Tiles) para levar todos juntos; puxe a alça do canto para aumentar ou diminuir os tokens.</p>
       </section>
       <section class="ali-box ali-drop" data-drop="party">
         <h3><i class="fa-solid fa-users"></i> Grupo (${b.party.length})</h3>
@@ -96,14 +98,12 @@ export class ManagerApp extends ApplicationV2 {
         <div class="ali-grid">
           <label>Fundo<select data-look="bg">${Object.entries(BACKGROUNDS).map(([k, v]) => opt(k, v.label, k === l.bg)).join("")}</select></label>
           <label>Moldura<select data-look="frame">${Object.entries(FRAMES).map(([k, v]) => opt(k, v.label, k === l.frame)).join("")}</select></label>
-          <label>Tamanho<select data-look="size">${Object.entries(SIZES).map(([k, v]) => opt(k, v, k === l.size)).join("")}</select></label>
-          <label>Posição<select data-look="pos">${Object.entries(POSITIONS).map(([k, v]) => opt(k, v, k === l.pos)).join("")}</select></label>
-          <label>Imagem<select data-look="prefer">${opt("token", "Imagem do token", l.prefer === "token")}${opt("retrato", "Retrato do ator", l.prefer === "retrato")}</select></label>
+          <label>Tamanho dos tokens <output>${Number(l.slot).toFixed(2)}</output><input type="range" data-look="slot" min="0.5" max="4" step="0.25" value="${l.slot}"></label>
+          <label class="ali-check"><input type="checkbox" data-look="lock" ${l.lock ? "checked" : ""}> Tokens fixos no pergaminho (travados)</label>
           <label>Título<input type="text" data-look="title" value="${esc(l.title)}" placeholder="(sem título)"></label>
           <label>Nome da área de NPCs<input type="text" data-look="npcLabel" value="${esc(l.npcLabel)}"></label>
           <div class="ali-checks">
             <label class="ali-check"><input type="checkbox" data-look="names" ${l.names ? "checked" : ""}> Nomes nos cards</label>
-            <label class="ali-check"><input type="checkbox" data-look="showNpcs" ${l.showNpcs ? "checked" : ""}> Mostrar NPCs</label>
           </div>
         </div>
       </section>
@@ -121,9 +121,13 @@ export class ManagerApp extends ApplicationV2 {
   _onRender(context, options) {
     super._onRender(context, options);
     const root = this.element;
+    root.querySelectorAll("input[type=range][data-look]").forEach(el => el.addEventListener("input", () => {
+      const out = el.closest("label")?.querySelector("output");
+      if ( out ) out.textContent = Number(el.value).toFixed(2);
+    }));
     root.querySelectorAll("[data-look]").forEach(el => el.addEventListener("change", guard(async () => {
       const key = el.dataset.look;
-      const v = el.type === "checkbox" ? el.checked : el.value;
+      const v = el.type === "checkbox" ? el.checked : el.type === "range" ? Number(el.value) : el.value;
       await mutate(b => {
         b.look[key] = v;
       });
@@ -154,28 +158,27 @@ export class ManagerApp extends ApplicationV2 {
     await addMembers([member], side);
   }
 
-  static async #onShow() {
-    if ( !canvas?.scene ) return;
-    await mutate(b => {
-      b.sceneId = canvas.scene.id;
-      b.visible = true;
-    });
-  }
-
-  static async #onHide() {
-    await mutate(b => {
-      b.visible = false;
-    });
-  }
-
   static async #onBring() {
     await bringDialog();
   }
 
-  static async #onCollect() {
-    if ( !canvas?.scene ) return;
-    const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: "Recolher tokens" }, content: `<p>Tirar do mapa de <b>${esc(canvas.scene.name)}</b> os tokens do alinhadinho? Eles continuam no pergaminho e voltam com "Levar grupo".</p>`, rejectClose: false });
-    if ( ok ) await collectTokens(canvas.scene);
+  static async #onRedraw() {
+    const b = getBoard();
+    await relayout(game.scenes.get(b.sceneId ?? ""), { force: true });
+  }
+
+  static async #onPutAway() {
+    const b = getBoard();
+    const scene = game.scenes.get(b.sceneId ?? "");
+    if ( !scene ) return;
+    const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: "Guardar grupo" }, content: `<p>Tirar o pergaminho e os tokens do grupo de <b>${esc(scene.name)}</b>? Eles ficam guardados aqui e voltam com "Colocar o pergaminho".</p>`, rejectClose: false });
+    if ( ok ) await removeScroll(scene, false);
+  }
+
+  static async #onDissolve() {
+    const b = getBoard();
+    const scene = game.scenes.get(b.sceneId ?? "");
+    if ( scene ) await removeScroll(scene, true);
   }
 
   static async #onAddSelected(event, target) {
@@ -215,7 +218,11 @@ export class ManagerApp extends ApplicationV2 {
   }
 
   static async #onRemove(event, target) {
-    await ManagerApp.#edit(target, (b, side, i) => b[side].splice(i, 1));
+    const id = target.closest("[data-mid]")?.dataset.mid;
+    const b = getBoard();
+    const m = [...b.party, ...b.npcs].find(x => x.id === id);
+    if ( m ) await releaseMember(m);
+    await ManagerApp.#edit(target, (bb, side, i) => bb[side].splice(i, 1));
   }
 
   static async #onUp(event, target) {
@@ -231,9 +238,12 @@ export class ManagerApp extends ApplicationV2 {
   }
 
   static async #onHideMember(event, target) {
+    let member = null;
     await ManagerApp.#edit(target, (b, side, i) => {
       b[side][i].hidden = !b[side][i].hidden;
+      member = b[side][i];
     });
+    if ( member ) await setMemberTokenHidden(member, member.hidden);
   }
 
   static async #onCarry(event, target) {
