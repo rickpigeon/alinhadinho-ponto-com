@@ -21,11 +21,11 @@ export function computeLayout(look, party, npcs, G) {
   const ends = BACKGROUNDS[look.bg]?.ends === "scroll";
   const endW = ends ? 0.5 * U : 0;
   const padX = 0.32 * U;
-  const labelRow = npcs.length ? 0.3 * U : 0;
+  const labelRow = npcs.length && String(look.npcLabel ?? "").trim() ? 0.3 * U : 0;
   const titleRow = look.title ? 0.46 * U : 0;
-  const padTop = 0.2 * U + Math.max(titleRow, labelRow);
+  const padTop = 0.22 * U + Math.max(titleRow, labelRow);
   const padBottom = 0.22 * U;
-  const nameH = look.names ? 0.3 * U : 0.06 * U;
+  const nameH = look.names ? 0.3 * U : 0;
   const card = m => {
     const size = memberSize(m, look);
     const ar = Math.max(0.3, Math.min(3, Number(m.ar) || 1));
@@ -33,14 +33,14 @@ export function computeLayout(look, party, npcs, G) {
     const tokH = ar < 1 ? size : size / ar;
     const tw = tokW * G;
     const th = tokH * G;
-    const pad = 0.08 * Math.max(tw, th);
+    const pad = 0;                                 // no frame: the card is the token itself
     const cw = tw + (2 * pad);
     const fh = th + (2 * pad);
     return { size, tokW: Math.round(tokW * 100) / 100, tokH: Math.round(tokH * 100) / 100, tw, th, pad, cw, fh, ch: fh + nameH };
   };
   const cards = [...party.map(m => ({ m, side: "party", ...card(m) })), ...npcs.map(m => ({ m, side: "npcs", ...card(m) }))];
   const maxCh = cards.reduce((v, c) => Math.max(v, c.ch), 0) || U;
-  const gap = 0.18 * U;
+  const gap = 0.14 * U;
   const divW = npcs.length && party.length ? 0.45 * U : 0;
   const rowW = list => list.reduce((v, c, i) => v + c.cw + (i ? gap : 0), 0);
   const pc = cards.filter(c => c.side === "party");
@@ -160,72 +160,23 @@ function sheetSVG(bg, x, y, w, h, S) {
   }
 }
 
-const FRAME_DEFS = `<linearGradient id="fr-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1a8"/><stop offset=".3" stop-color="#e2a83a"/><stop offset=".5" stop-color="#fbe39a"/><stop offset=".75" stop-color="#b97a1c"/><stop offset="1" stop-color="#f6d27a"/></linearGradient>
-  <linearGradient id="fr-silver" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".4" stop-color="#a8b0bc"/><stop offset=".6" stop-color="#eef2f6"/><stop offset="1" stop-color="#7a828e"/></linearGradient>
-  <linearGradient id="fr-bronze" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2c08a"/><stop offset=".45" stop-color="#a8642a"/><stop offset=".6" stop-color="#e0a066"/><stop offset="1" stop-color="#6a3a14"/></linearGradient>
-  <radialGradient id="fr-mat" cx=".5" cy=".45" r=".7"><stop offset="0" stop-color="#fbe9a4"/><stop offset="1" stop-color="#eec258"/></radialGradient>
-  <filter id="fr-shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-opacity=".45"/></filter>
-  <filter id="fr-red" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#e01e1e" flood-opacity=".85"/></filter>`;
+const FRAME_DEFS = `<filter id="fr-soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="5"/></filter>
+  <filter id="fr-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2.5"/></filter>`;
 
-/** Corner flourish: (px, py) = frame corner, rot 0 = bottom-left, 90 = top-left, 180 = top-right, 270 = bottom-right. */
-function flourish(px, py, rot, size) {
-  return `<g transform="translate(${px} ${py}) rotate(${rot}) translate(0 ${-size}) scale(${size / 40})"><path d="M2 38 C2 18, 8 8, 20 6 C28 5, 30 12, 25 14 C20 16, 18 10, 22 9 M6 34 C10 20, 18 14, 30 14 C36 14, 38 20, 33 21" fill="none" stroke="#b9781a" stroke-width="3.2" stroke-linecap="round"/><circle cx="34" cy="21" r="2.6" fill="#f2c45a"/><circle cx="22" cy="9" r="2.2" fill="#f2c45a"/></g>`;
-}
 
-function frameSVG(kind, s, member, look) {
+/** Under each token: a soft contact shadow; below it, the name (optional). */
+function cardSVG(s, member, look) {
   const { x, y, cw } = s;
-  const fh = s.fh ?? cw;               // frame around the token picture
+  const fh = s.fh ?? cw;
   const hostile = s.side === "npcs" && (member.disposition ?? -1) <= -1;
-  const filt = hostile ? `filter="url(#fr-red)"` : `filter="url(#fr-shadow)"`;
-  let out = "";
-  switch ( kind ) {
-    case "ouro":
-    case "ouro-simples":
-    case "prata":
-    case "bronze": {
-      const g = kind === "prata" ? "fr-silver" : kind === "bronze" ? "fr-bronze" : "fr-gold";
-      const mat = kind === "prata" ? "#dfe4ea" : kind === "bronze" ? "#e8c8a0" : "url(#fr-mat)";
-      const b = cw * 0.07;
-      out = `<g ${filt}><rect x="${x}" y="${y}" width="${cw}" height="${fh}" rx="4" fill="url(#${g})" stroke="#6a400c" stroke-width="1.5"/>
-        <rect x="${x + b}" y="${y + b}" width="${cw - (2 * b)}" height="${fh - (2 * b)}" fill="${mat}" stroke="#a8701a" stroke-width="1.5"/></g>`;
-      if ( kind === "ouro" ) {
-        const fs = cw * 0.32;
-        out += flourish(x - 3, y + fh + 3, 0, fs) + flourish(x - 3, y - 3, 90, fs) + flourish(x + cw + 3, y - 3, 180, fs) + flourish(x + cw + 3, y + fh + 3, 270, fs);
-      }
-      break;
-    }
-    case "madeira":
-      out = `<g ${filt}><rect x="${x}" y="${y}" width="${cw}" height="${fh}" rx="3" fill="#7a4a24" stroke="#3a2010" stroke-width="2"/><rect x="${x + (cw * 0.07)}" y="${y + (cw * 0.07)}" width="${cw * 0.86}" height="${fh * 0.86}" fill="#d8bc8c"/></g>`;
-      break;
-    case "carta":
-      out = `<g ${filt}><rect x="${x}" y="${y}" width="${cw}" height="${s.ch - (look.names ? 4 : 0)}" rx="${cw * 0.08}" fill="#fffaf0" stroke="#c8b89a" stroke-width="1.5"/><rect x="${x + (cw * 0.06)}" y="${y + (cw * 0.06)}" width="${cw * 0.88}" height="${fh * 0.88}" rx="${cw * 0.05}" fill="#d8e2f2" stroke="#8a9ab8" stroke-width="1"/></g>`;
-      break;
-    case "polaroid":
-      out = `<g ${filt} transform="rotate(${(s.x % 3) - 1.5} ${x + (cw / 2)} ${y + (fh / 2)})"><rect x="${x - (cw * 0.03)}" y="${y - (cw * 0.03)}" width="${cw * 1.06}" height="${s.ch}" fill="#fdfdf8"/><rect x="${x + (cw * 0.04)}" y="${y + (cw * 0.04)}" width="${cw * 0.92}" height="${fh * 0.92}" fill="#d8dde4"/></g>`;
-      break;
-    case "medalhao":
-      out = `<g ${filt}><ellipse cx="${x + (cw / 2)}" cy="${y + (fh / 2)}" rx="${cw / 2}" ry="${fh / 2}" fill="url(#fr-gold)" stroke="#6a400c" stroke-width="1.5"/><ellipse cx="${x + (cw / 2)}" cy="${y + (fh / 2)}" rx="${cw * 0.42}" ry="${fh * 0.42}" fill="url(#fr-mat)"/></g>`;
-      break;
-    case "hexagono": {
-      const cx = x + (cw / 2);
-      const cy = y + (fh / 2);
-      const hex = k => Array.from({ length: 6 }, (_, i) => `${cx + ((cw * 0.56 * k) * Math.cos((Math.PI / 3 * i) - (Math.PI / 2)))},${cy + ((fh * 0.56 * k) * Math.sin((Math.PI / 3 * i) - (Math.PI / 2)))}`).join(" ");
-      out = `<g ${filt}><polygon points="${hex(1)}" fill="url(#fr-gold)" stroke="#6a400c" stroke-width="1.5"/><polygon points="${hex(0.86)}" fill="url(#fr-mat)"/></g>`;
-      break;
-    }
-    case "scifi": {
-      const c = cw * 0.12;
-      out = `<g ${filt}><polygon points="${x + c},${y} ${x + cw},${y} ${x + cw},${y + fh - c} ${x + cw - c},${y + fh} ${x},${y + fh} ${x},${y + c}" fill="rgba(6,20,32,.95)" stroke="#3ee6ff" stroke-width="2"/></g>`;
-      break;
-    }
-    default: break;
-  }
+  let out = `<rect x="${x + (cw * 0.04)}" y="${y + (fh * 0.05)}" width="${cw * 0.92}" height="${fh * 0.95}" rx="${Math.min(cw, fh) * 0.06}" fill="#000" opacity=".38" filter="url(#fr-soft)"/>`;
+  if ( hostile ) out += `<rect x="${x - 2}" y="${y - 2}" width="${cw + 4}" height="${fh + 4}" rx="${Math.min(cw, fh) * 0.06}" fill="none" stroke="#e01e1e" stroke-width="3" opacity=".75" filter="url(#fr-glow)"/>`;
   if ( look.names ) {
-    const ny = y + fh + (s.ch - fh) / 2;
+    const ny = y + fh + ((s.ch - fh) / 2);
     const nameColor = s.side === "npcs" ? (hostile ? "#7a1010" : member.disposition === 0 ? "#6e5a14" : "#145a32") : "#3c240e";
     const label = esc(member.name.length > 16 ? `${member.name.slice(0, 15)}…` : member.name);
     const fsz = Math.max(9, Math.min(Math.max(cw * 0.14, (s.S ?? 100) * 0.12), (s.S ?? 100) * 0.17));
-    const tw = Math.min(cw * 1.1, (label.length * fsz * 0.58) + (fsz * 1.2));
+    const tw = Math.min(cw * 1.15, (label.length * fsz * 0.58) + (fsz * 1.2));
     out += `<rect x="${x + (cw / 2) - (tw / 2)}" y="${ny - (fsz * 0.75)}" width="${tw}" height="${fsz * 1.5}" rx="3" fill="${nameColor}" opacity=".9"/>
       <text x="${x + (cw / 2)}" y="${ny + (fsz * 0.35)}" font-family="Georgia, 'Times New Roman', serif" font-weight="bold" font-size="${fsz}" fill="#fbe9b8" text-anchor="middle">${label}</text>`;
   }
@@ -244,7 +195,7 @@ export function buildSVG(look, L, members) {
   if ( look.title ) parts.push(`<text x="${L.W / 2}" y="${sheetY + (L.S * 0.5)}" font-family="Georgia, serif" font-weight="bold" font-size="${L.S * 0.32}" letter-spacing="3" fill="${textColor}" text-anchor="middle">${esc(look.title.toUpperCase())}</text>`);
   if ( L.labelRow && look.npcLabel ) parts.push(`<text x="${(L.npcX0 + L.npcX1) / 2}" y="${L.labelY}" font-family="Georgia, serif" font-weight="bold" font-size="${L.S * 0.17}" letter-spacing="2" fill="${textColor}" opacity=".85" text-anchor="middle">${esc(look.npcLabel.toUpperCase())}</text>`);
   if ( L.divX ) parts.push(`<line x1="${L.divX}" y1="${sheetY + (L.S * 0.3)}" x2="${L.divX}" y2="${sheetY + L.sheetH - (L.S * 0.25)}" stroke="${textColor}" stroke-opacity=".45" stroke-width="3" stroke-linecap="round"/>`);
-  for ( const s of L.slots ) parts.push(frameSVG(look.frame, s, byId.get(s.id) ?? { name: "" }, look));
+  for ( const s of L.slots ) parts.push(cardSVG(s, byId.get(s.id) ?? { name: "" }, look));
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${L.W}" height="${L.H}" viewBox="0 0 ${L.W} ${L.H}"><defs>${FRAME_DEFS}</defs>${parts.join("")}</svg>`;
 }
 

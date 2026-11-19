@@ -3,7 +3,7 @@
  * Actors and tokens can be dropped on the window; selected tokens can be added with one click.
  */
 import { MODULE_ID, MODULE_TITLE, getBoard, isPlayerActor, memberFromActor, memberFromToken, mutate } from "./store.mjs";
-import { BACKGROUNDS, FRAMES } from "./looks.mjs";
+import { BACKGROUNDS } from "./looks.mjs";
 import { bringDialog, relayout, releaseMember, removeScroll, resizeMember, scrollTile, setMemberTokenHidden } from "./scroll.mjs";
 import { memberSize } from "./store.mjs";
 import { guard, guardActions } from "./errors.mjs";
@@ -99,13 +99,12 @@ export class ManagerApp extends ApplicationV2 {
         <h3><i class="fa-solid fa-palette"></i> Aparência</h3>
         <div class="ali-grid">
           <label>Fundo<select data-look="bg">${Object.entries(BACKGROUNDS).map(([k, v]) => opt(k, v.label, k === l.bg)).join("")}</select></label>
-          <label>Moldura<select data-look="frame">${Object.entries(FRAMES).map(([k, v]) => opt(k, v.label, k === l.frame)).join("")}</select></label>
           <label data-tooltip="Tamanho padrão das cartas; cada carta pode ter o seu (− / + na lista ou no HUD do token)">Tamanho das cartas <output>${Number(l.slot).toFixed(2)}</output><input type="range" data-look="slot" min="0.5" max="4" step="0.25" value="${l.slot}"></label>
           <label class="ali-check"><input type="checkbox" data-look="lock" ${l.lock ? "checked" : ""}> Tokens fixos no pergaminho (travados)</label>
           <label>Título<input type="text" data-look="title" value="${esc(l.title)}" placeholder="(sem título)"></label>
-          <label>Nome da área de NPCs<input type="text" data-look="npcLabel" value="${esc(l.npcLabel)}"></label>
+          <label>Nome da área de NPCs<input type="text" data-look="npcLabel" value="${esc(l.npcLabel)}" placeholder="(sem rótulo)"></label>
           <div class="ali-checks">
-            <label class="ali-check"><input type="checkbox" data-look="names" ${l.names ? "checked" : ""}> Nomes nos cards</label>
+            <label class="ali-check"><input type="checkbox" data-look="names" ${l.names ? "checked" : ""}> Nome escrito embaixo de cada token</label>
           </div>
         </div>
       </section>

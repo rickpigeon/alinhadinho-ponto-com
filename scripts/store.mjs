@@ -8,7 +8,7 @@ export const MODULE_TITLE = "Alinhadinho.com";
 
 export const DEFAULT_BOARD = {
   v: 2, sceneId: null, tileId: null,
-  look: { bg: "pergaminho", frame: "ouro", slot: 1.25, lock: true, title: "", names: true, npcLabel: "NPCs e inimigos" },
+  look: { bg: "pergaminho", slot: 1.25, lock: true, title: "", names: false, npcLabel: "" },
   party: [], npcs: []
 };
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0 — 2026-11-19
+
+- **Sem molduras:** cada card agora é o próprio token, com uma sombra suave embaixo. Hostis ganham um brilho vermelho discreto. A opção "Moldura" saiu.
+- **A proporção da imagem é lida de forma confiável.** Antes, uma imagem de outro servidor falhava e a carta retrato ficava encolhida dentro de um quadrado, com espaço sobrando ao redor. Agora a leitura segue esta ordem:
+  - primeiro a textura que o Foundry já carregou para o token;
+  - depois o carregador de texturas do Foundry;
+  - depois a imagem direto, sem exigir CORS;
+  - se nada funcionar, o formato do próprio token.
+- O pergaminho encosta nas cartas:
+  - sem moldura, o espaço entre as cartas ficou menor;
+  - o rótulo da área de NPCs só ocupa espaço quando tem texto, e vem vazio por padrão;
+  - os nomes embaixo dos tokens vêm desligados por padrão.
+
 ## 1.2.1 — 2026-11-19
 
 - **Redimensionar ficou estável.**

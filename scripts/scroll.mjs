@@ -73,18 +73,45 @@ function scrollTexture(m) {
 }
 
 const arCache = new Map();
-/** Width / height of a picture (cached). */
-async function aspectOf(src) {
-  if ( !src ) return 1;
+const ratioOf = (w, h) => (w > 1 && h > 1 ? w / h : null);
+
+/**
+ * Width / height of a token picture, or null when it cannot be read.
+ * 1) the texture Foundry already loaded for the token, 2) Foundry's texture loader,
+ * 3) a plain <img> (no crossOrigin: only the size is read, so images from other servers work too).
+ */
+async function aspectOf(src, token) {
+  if ( !src ) return null;
   if ( arCache.has(src) ) return arCache.get(src);
-  const ar = await new Promise(res => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => res(img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 1);
-    img.onerror = () => res(1);
-    img.src = src;
-  });
-  arCache.set(src, ar);
+  let ar = null;
+  try {
+    const tex = token?.object?.texture ?? token?.object?.mesh?.texture;
+    if ( tex && token?.texture?.src === src ) ar = ratioOf(tex.width ?? tex.orig?.width, tex.height ?? tex.orig?.height);
+  } catch {
+    /* not drawn */
+  }
+  if ( !ar ) {
+    try {
+      const load = foundry.canvas?.loadTexture ?? globalThis.loadTexture;
+      if ( typeof load === "function" ) {
+        const tex = await load(src);
+        ar = ratioOf(tex?.width ?? tex?.baseTexture?.width, tex?.height ?? tex?.baseTexture?.height);
+      }
+    } catch {
+      /* try the next way */
+    }
+  }
+  if ( !ar ) {
+    ar = await new Promise(res => {
+      const img = new Image();
+      const done = v => res(v);
+      img.onload = () => done(ratioOf(img.naturalWidth, img.naturalHeight));
+      img.onerror = () => done(null);
+      setTimeout(() => done(null), 8000);
+      img.src = src;
+    });
+  }
+  if ( ar ) arCache.set(src, ar);
   return ar;
 }
 
@@ -124,16 +151,24 @@ async function layoutOnce(scene, force) {
   for ( const m of [...party, ...npcs] ) {
     const t = tokenIn(m, scene);
     const src = t?.texture?.src ?? m.tokenData?.texture?.src ?? m.img;
-    if ( src && m.arSrc !== src ) {
-      m.ar = Math.round((await aspectOf(src)) * 1000) / 1000;
-      m.arSrc = src;
+    if ( !src || (m.arSrc === src && m.arOk) ) continue;
+    const ar = await aspectOf(src, t);
+    if ( ar ) {
+      m.ar = Math.round(ar * 1000) / 1000;
+      m.arOk = true;
+    } else {
+      /* could not read the picture: use the token's own shape (card tokens are usually 1 × 1.5) */
+      const o = m.orig ?? { width: t?.width ?? m.tokenData?.width ?? 1, height: t?.height ?? m.tokenData?.height ?? 1 };
+      m.ar = Math.round(((o.width || 1) / (o.height || 1)) * 1000) / 1000;
+      m.arOk = false;
     }
+    m.arSrc = src;
   }
   const L = computeLayout(board.look, party, npcs, S);
   const members = [...party, ...npcs];
 
   /* 1. picture */
-  const key = JSON.stringify({ v: 4, l: board.look, S, m: members.map(m => [m.id, m.name, m.disposition, memberSize(m, board.look), m.ar ?? 1]) });
+  const key = JSON.stringify({ v: 5, l: board.look, S, m: members.map(m => [m.id, m.name, m.disposition, memberSize(m, board.look), m.ar ?? 1]) });
   if ( force || tile.getFlag(MODULE_ID, "key") !== key ) {
     const file = await rasterize(buildSVG(board.look, L, members), L.W, L.H, `pergaminho-${scene.id}-${Date.now()}`, 2, board.look, L);
     const src = await uploadArt(file);
