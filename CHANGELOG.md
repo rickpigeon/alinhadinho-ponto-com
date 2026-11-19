@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.0 — 2026-11-19
+
+- **Tamanho individual por carta**, de 0,5 a 4 espaços. Há três formas de mudar:
+  - os botões − / + na lista do gerenciador (↺ volta ao padrão do pergaminho);
+  - os botões de lupa no HUD do token;
+  - mudar o tamanho do token na configuração dele.
+  - As cartas ficam alinhadas pela base, e o pergaminho cresce para caber a maior.
+- Redimensionar o pergaminho também escala as cartas que têm tamanho próprio.
+- **Fundos repintados com textura:**
+  - pergaminho envelhecido com bordas irregulares e rolos com espiral e pontas de madeira (sem a espiral amarela);
+  - pergaminho queimado, papiro com fibras e carta náutica com rosa dos ventos;
+  - couro com grão e costura, tábuas com veios, nós e pregos, laje de pedra com rachaduras, chapa de metal escovado com rebites e estandarte de tecido com dobras e borda dourada.
+  - O holográfico sci-fi continua como estava.
+  - Os fundos arcano, neon, vidro e céu estrelado saíram. Quem usava um deles passa para o holográfico ou para o pergaminho.
+- A etiqueta de nome não cresce mais além do limite nas cartas grandes.
+
 ## 1.1.0 — 2026-11-19
 
 - O pergaminho agora fica **no mapa** (um Tile), e não mais preso à tela:

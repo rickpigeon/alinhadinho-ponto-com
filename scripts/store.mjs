@@ -12,9 +12,18 @@ export const DEFAULT_BOARD = {
   party: [], npcs: []
 };
 
+const KNOWN_BG = ["pergaminho", "queimado", "papiro", "nautico", "couro", "madeira", "pedra", "metal", "estandarte", "holografico", "nenhum"];
+
 export function getBoard() {
   const b = game.settings.get(MODULE_ID, "board") ?? {};
-  return foundry.utils.mergeObject(foundry.utils.deepClone(DEFAULT_BOARD), foundry.utils.deepClone(b), { inplace: false });
+  const out = foundry.utils.mergeObject(foundry.utils.deepClone(DEFAULT_BOARD), foundry.utils.deepClone(b), { inplace: false });
+  if ( !KNOWN_BG.includes(out.look.bg) ) out.look.bg = out.look.bg === "vidro" || out.look.bg === "estrelas" || out.look.bg === "neon" || out.look.bg === "arcano" ? "holografico" : "pergaminho";
+  return out;
+}
+
+/** Size (grid units) of a member's card/token on the scroll. */
+export function memberSize(m, look) {
+  return Math.max(0.5, Math.min(4, Number(m.size) || Number(look.slot) || 1.25));
 }
 
 export async function saveBoard(board) {

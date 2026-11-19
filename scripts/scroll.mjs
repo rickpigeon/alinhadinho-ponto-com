@@ -3,7 +3,7 @@
  * its frames. Dragging the tile moves everyone; resizing it scales the tokens; "Levar o grupo"
  * recreates the scroll and the tokens in another scene. Writes are done by the active GM.
  */
-import { MODULE_ID, MODULE_TITLE, getBoard, saveBoard } from "./store.mjs";
+import { MODULE_ID, MODULE_TITLE, getBoard, memberSize, saveBoard } from "./store.mjs";
 import { buildSVG, computeLayout, rasterize, uploadArt } from "./art.mjs";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c]);
@@ -90,9 +90,9 @@ async function layoutOnce(scene, force) {
   const members = [...party, ...npcs];
 
   /* 1. picture */
-  const key = JSON.stringify({ l: board.look, S, m: members.map(m => [m.id, m.name, m.disposition]) });
+  const key = JSON.stringify({ v: 3, l: board.look, S, m: members.map(m => [m.id, m.name, m.disposition, memberSize(m, board.look)]) });
   if ( force || tile.getFlag(MODULE_ID, "key") !== key ) {
-    const file = await rasterize(buildSVG(board.look, L, members), L.W, L.H, `pergaminho-${scene.id}-${Date.now()}`);
+    const file = await rasterize(buildSVG(board.look, L, members), L.W, L.H, `pergaminho-${scene.id}-${Date.now()}`, 2, board.look, L);
     const src = await uploadArt(file);
     await tile.update({ "texture.src": src, width: L.W, height: L.H, [`flags.${MODULE_ID}.key`]: key, [`flags.${MODULE_ID}.W`]: L.W }, { aliInternal: true });
   }
@@ -102,7 +102,7 @@ async function layoutOnce(scene, force) {
   const updates = [];
   for ( const s of L.slots ) {
     const m = members.find(x => x.id === s.id);
-    const pos = { x: Math.round(tile.x + s.tx), y: Math.round(tile.y + s.ty), width: L.slot, height: L.slot, locked: !!board.look.lock };
+    const pos = { x: Math.round(tile.x + s.tx), y: Math.round(tile.y + s.ty), width: s.size, height: s.size, locked: !!board.look.lock };
     const t = tokenIn(m, scene);
     if ( t ) {
       if ( !m.orig ) m.orig = { width: t.width, height: t.height, locked: !!t.locked };
@@ -290,12 +290,61 @@ export async function onUpdateTile(tile, changes, options) {
     const oldW = Number(tile.getFlag(MODULE_ID, "W")) || tile.width;
     const ratio = (changes.width ?? tile.width) / oldW;
     if ( Number.isFinite(ratio) && Math.abs(ratio - 1) > 0.02 ) {
-      board.look.slot = Math.max(0.5, Math.min(4, Math.round((Number(board.look.slot) || 1.25) * ratio * 4) / 4));
+      const q = v => Math.max(0.5, Math.min(4, Math.round(v * ratio * 4) / 4));
+      board.look.slot = q(Number(board.look.slot) || 1.25);
+      for ( const m of [...board.party, ...board.npcs] ) if ( m.size ) m.size = q(Number(m.size));
       await saveBoard(board);
       return relayout(tile.parent, { force: true });
     }
   }
   if ( "x" in changes || "y" in changes || "width" in changes ) await relayout(tile.parent);
+}
+
+/** A token on the scroll was resized by hand (token config): that card takes the new size. */
+export async function onUpdateToken(token, changes, options) {
+  if ( !isActiveGM() || options?.aliInternal || !("width" in changes) ) return;
+  const board = getBoard();
+  if ( token.parent?.id !== board.sceneId || !board.tileId ) return;
+  const m = [...board.party, ...board.npcs].find(x => x.tokenId === token.id && x.sceneId === token.parent.id);
+  if ( !m ) return;
+  m.size = Math.max(0.5, Math.min(4, Math.round(Number(changes.width) * 4) / 4));
+  await saveBoard(board);
+}
+
+/** Change one card's size by delta (null = back to the scroll size). */
+export async function resizeMember(id, delta) {
+  const board = getBoard();
+  const m = [...board.party, ...board.npcs].find(x => x.id === id);
+  if ( !m ) return;
+  if ( delta === null ) delete m.size;
+  else m.size = Math.max(0.5, Math.min(4, memberSize(m, board.look) + delta));
+  await saveBoard(board);
+}
+
+/** Token HUD: + / − for a token that sits on the scroll (GM). */
+export function onRenderTokenHUD(hud, html) {
+  if ( !game.user.isGM ) return;
+  const token = hud.document ?? hud.object?.document;
+  const board = getBoard();
+  if ( !token || token.parent?.id !== board.sceneId || !board.tileId ) return;
+  const m = [...board.party, ...board.npcs].find(x => x.tokenId === token.id);
+  if ( !m ) return;
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  const col = root?.querySelector(".col.right") ?? root?.querySelector(".col");
+  if ( !col ) return;
+  for ( const [d, icon, tip] of [[0.25, "fa-magnifying-glass-plus", "Aumentar esta carta"], [-0.25, "fa-magnifying-glass-minus", "Diminuir esta carta"]] ) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "control-icon";
+    b.dataset.tooltip = `${tip} (Alinhadinho)`;
+    b.innerHTML = `<i class="fa-solid ${icon}"></i>`;
+    b.addEventListener("click", ev => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      resizeMember(m.id, d);
+    });
+    col.appendChild(b);
+  }
 }
 
 /** The GM deleted the scroll tile by hand: tokens go back to normal. */

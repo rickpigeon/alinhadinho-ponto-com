@@ -1,20 +1,16 @@
 /** Catalog of backgrounds and card frames (all drawn with CSS/SVG, no image files). */
 export const BACKGROUNDS = {
-  pergaminho: { label: "Pergaminho com rolos dourados", ends: "scroll" },
-  papiro: { label: "Papiro claro", ends: "scroll" },
+  pergaminho: { label: "Pergaminho envelhecido (rolos)", ends: "scroll" },
   queimado: { label: "Pergaminho de bordas queimadas", ends: "none" },
+  papiro: { label: "Papiro (rolos)", ends: "scroll" },
+  nautico: { label: "Carta náutica (rolos)", ends: "scroll" },
   couro: { label: "Couro costurado", ends: "none" },
-  madeira: { label: "Tábua de madeira", ends: "none" },
-  pedra: { label: "Pedra entalhada", ends: "none" },
-  metal: { label: "Placa de metal rebitada", ends: "none" },
+  madeira: { label: "Tábuas de madeira", ends: "none" },
+  pedra: { label: "Laje de pedra", ends: "none" },
+  metal: { label: "Chapa de metal rebitada", ends: "none" },
   estandarte: { label: "Estandarte de tecido", ends: "none" },
-  nautico: { label: "Carta náutica", ends: "scroll" },
-  arcano: { label: "Vitral arcano", ends: "none" },
   holografico: { label: "Holográfico (sci-fi)", ends: "none" },
-  neon: { label: "Neon cyberpunk", ends: "none" },
-  vidro: { label: "Vidro fosco", ends: "none" },
-  estrelas: { label: "Céu estrelado", ends: "none" },
-  nenhum: { label: "Sem fundo", ends: "none" }
+  nenhum: { label: "Sem fundo (só as molduras)", ends: "none" }
 };
 
 export const FRAMES = {

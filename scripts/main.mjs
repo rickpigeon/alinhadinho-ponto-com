@@ -6,7 +6,7 @@
  */
 import { MODULE_ID, MODULE_TITLE, DEFAULT_BOARD, getBoard } from "./store.mjs";
 import { ManagerApp } from "./manager-app.mjs";
-import { bringDialog, bringToScene, onDeleteTile, onUpdateTile, relayout, removeScroll } from "./scroll.mjs";
+import { bringDialog, bringToScene, onDeleteTile, onRenderTokenHUD, onUpdateTile, onUpdateToken, relayout, removeScroll, resizeMember } from "./scroll.mjs";
 import { guard, watchUncaught } from "./errors.mjs";
 
 const relayoutSoon = foundry.utils.debounce(() => {
@@ -27,7 +27,7 @@ Hooks.once("init", () => {
 
 Hooks.once("ready", () => {
   const mod = game.modules.get(MODULE_ID);
-  if ( mod ) mod.api = { abrir: () => ManagerApp.open(), levar: () => bringDialog(), bringToScene, removeScroll, relayout };
+  if ( mod ) mod.api = { abrir: () => ManagerApp.open(), levar: () => bringDialog(), bringToScene, removeScroll, relayout, resizeMember };
 });
 
 Hooks.on("getSceneControlButtons", controls => {
@@ -42,4 +42,6 @@ Hooks.on("getSceneControlButtons", controls => {
 
 Hooks.on("updateTile", guard(onUpdateTile, "pergaminho"));
 Hooks.on("deleteTile", guard(onDeleteTile, "pergaminho"));
+Hooks.on("updateToken", guard(onUpdateToken, "tamanho da carta"));
+Hooks.on("renderTokenHUD", guard(onRenderTokenHUD, "HUD"));
 for ( const hook of ["createToken", "deleteToken"] ) Hooks.on(hook, () => ManagerApp.refresh());

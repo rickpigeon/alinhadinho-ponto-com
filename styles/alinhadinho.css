@@ -25,3 +25,7 @@
 .ali-manager .ali-checks { display: flex; flex-direction: column; justify-content: flex-end; }
 .ali-manager .ali-check, .ali-dialog .ali-check { flex-direction: row !important; align-items: center; gap: 6px; display: flex; }
 .ali-dialog label { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; }
+.ali-manager .ali-size { display: inline-flex; align-items: center; gap: 2px; margin-right: 4px; }
+.ali-manager .ali-size button { width: 20px !important; height: 22px !important; font-size: 10px; }
+.ali-manager .ali-size b { min-width: 30px; text-align: center; font-size: .9em; opacity: .75; }
+.ali-manager .ali-size b.ali-own { opacity: 1; color: #f2c418; }

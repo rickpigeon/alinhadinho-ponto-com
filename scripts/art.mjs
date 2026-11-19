@@ -3,8 +3,9 @@
  * background + frames + names, rasterised to WebP and uploaded to Data/worlds/<world>/alinhadinho/.
  * The real tokens are then placed inside the frames (scroll.mjs).
  */
-import { MODULE_ID } from "./store.mjs";
+import { MODULE_ID, memberSize } from "./store.mjs";
 import { BACKGROUNDS } from "./looks.mjs";
+import { paintBackground } from "./painter.mjs";
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c]);
 
@@ -13,42 +14,49 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": 
  * Returns { W, H, slots: [{id, side, x, y, cw, ch, tx, ty, tp}], ... } with x/y relative to the tile.
  */
 export function computeLayout(look, party, npcs, S) {
-  const slot = Math.max(0.5, Math.min(4, Number(look.slot) || 1.25));
-  const tp = slot * S;                 // token size in px
-  const cw = tp * 1.18;                // card width
-  const ch = cw * (look.names ? 1.32 : 1.12);
-  const gap = Math.max(8, 0.2 * tp);
   const ends = BACKGROUNDS[look.bg]?.ends === "scroll";
-  const endW = ends ? 0.55 * S : 0;
+  const endW = ends ? 0.6 * S : 0;
   const padX = 0.45 * S;
   const labelRow = npcs.length ? 0.34 * S : 0;
   const titleRow = look.title ? 0.55 * S : 0;
-  const padTop = 0.28 * S + Math.max(titleRow, labelRow);
-  const padBottom = 0.3 * S;
+  const padTop = 0.3 * S + Math.max(titleRow, labelRow);
+  const padBottom = 0.32 * S;
+  const card = m => {
+    const size = memberSize(m, look);
+    const tp = size * S;
+    const cw = tp * 1.18;
+    return { size, tp, cw, ch: cw * (look.names ? 1.32 : 1.12) };
+  };
+  const cards = [...party.map(m => ({ m, side: "party", ...card(m) })), ...npcs.map(m => ({ m, side: "npcs", ...card(m) }))];
+  const maxCh = cards.reduce((v, c) => Math.max(v, c.ch), 1.18 * S * 1.2);
+  const gapOf = c => Math.max(8, 0.2 * c.tp);
   const divW = npcs.length && party.length ? 0.55 * S : 0;
-  const row = n => (n ? (n * cw) + ((n - 1) * gap) : 0);
-  const sheetW = Math.max(3 * S, (padX * 2) + row(party.length) + divW + row(npcs.length));
-  const sheetH = padTop + ch + padBottom;
-  const rollExtra = ends ? 0.16 * S : 0;
+  const rowW = list => list.reduce((v, c, i) => v + c.cw + (i ? gapOf(c) : 0), 0);
+  const pc = cards.filter(c => c.side === "party");
+  const nc = cards.filter(c => c.side === "npcs");
+  const sheetW = Math.max(3 * S, (padX * 2) + rowW(pc) + divW + rowW(nc));
+  const sheetH = padTop + maxCh + padBottom;
+  const rollExtra = ends ? 0.2 * S : 0;
   const W = Math.round(sheetW + (endW * 2));
   const H = Math.round(sheetH + (rollExtra * 2));
+  const base = rollExtra + padTop + maxCh;        // cards stand on one baseline
   const slots = [];
   let x = endW + padX;
-  const y = rollExtra + padTop;
-  party.forEach(m => {
-    slots.push({ id: m.id, side: "party", x, y, cw, ch, tx: x + ((cw - tp) / 2), ty: y + ((cw - tp) / 2), tp });
-    x += cw + gap;
-  });
-  const npcStart = x - (party.length ? gap : 0) + divW;
+  const place = (c, i) => {
+    if ( i ) x += gapOf(c);
+    const y = base - c.ch;
+    slots.push({ id: c.m.id, side: c.side, size: c.size, S, x, y, cw: c.cw, ch: c.ch, tx: x + ((c.cw - c.tp) / 2), ty: y + ((c.cw - c.tp) / 2), tp: c.tp });
+    x += c.cw;
+  };
+  pc.forEach(place);
+  const npcStart = x + divW;
   x = npcStart;
-  npcs.forEach(m => {
-    slots.push({ id: m.id, side: "npcs", x, y, cw, ch, tx: x + ((cw - tp) / 2), ty: y + ((cw - tp) / 2), tp });
-    x += cw + gap;
-  });
+  nc.forEach(place);
   return {
-    W, H, S, slot, tp, cw, ch, endW, rollExtra, sheetW, sheetH, padTop, labelRow, titleRow,
-    divX: party.length && npcs.length ? npcStart - (divW / 2) : null,
-    npcX0: npcStart, npcX1: x - gap, slots
+    W, H, S, slot: Number(look.slot) || 1.25, endW, rollExtra, sheetW, sheetH, padTop, labelRow, titleRow,
+    labelY: rollExtra + padTop - (0.12 * S),
+    divX: pc.length && nc.length ? npcStart - (divW / 2) : null,
+    npcX0: npcStart, npcX1: x, slots
   };
 }
 
@@ -141,24 +149,6 @@ function sheetSVG(bg, x, y, w, h, S) {
   }
 }
 
-function rollsSVG(L) {
-  const gold = `<linearGradient id="g-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff2b0"/><stop offset=".45" stop-color="#e0a93a"/><stop offset="1" stop-color="#8a5a14"/></linearGradient>
-    <linearGradient id="g-roll" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8a6a3e"/><stop offset=".35" stop-color="#e8d2a4"/><stop offset=".5" stop-color="#fff2d4"/><stop offset=".7" stop-color="#c8a670"/><stop offset="1" stop-color="#6e4e28"/></linearGradient>`;
-  const rw = L.S * 0.24;
-  const spiral = (cx, flip) => {
-    const s = (L.H / 220) * 0.95;
-    return `<g transform="translate(${cx} ${L.H / 2}) scale(${flip ? -s : s} ${s}) translate(-30 -110)">
-      <path d="M30 6 C10 30, 52 52, 30 78 C12 98, 44 112, 32 128 C22 142, 8 132, 14 120 C20 108, 38 116, 34 132 C28 156, 6 166, 18 190 C26 206, 44 206, 46 196" fill="none" stroke="url(#g-gold)" stroke-width="7" stroke-linecap="round"/>
-      <circle cx="46" cy="196" r="6" fill="url(#g-gold)"/><circle cx="30" cy="8" r="5" fill="url(#g-gold)"/></g>`;
-  };
-  const lx = L.endW - (rw * 0.6);
-  const rx = L.W - L.endW - (rw * 0.4);
-  return `<defs>${gold}</defs>
-    <rect x="${lx}" y="2" width="${rw}" height="${L.H - 4}" rx="${rw / 2}" fill="url(#g-roll)" stroke="rgba(70,40,10,.6)" stroke-width="1.5"/>
-    <rect x="${rx}" y="2" width="${rw}" height="${L.H - 4}" rx="${rw / 2}" fill="url(#g-roll)" stroke="rgba(70,40,10,.6)" stroke-width="1.5"/>
-    ${spiral(L.endW * 0.42, false)}${spiral(L.W - (L.endW * 0.42), true)}`;
-}
-
 const FRAME_DEFS = `<linearGradient id="fr-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1a8"/><stop offset=".3" stop-color="#e2a83a"/><stop offset=".5" stop-color="#fbe39a"/><stop offset=".75" stop-color="#b97a1c"/><stop offset="1" stop-color="#f6d27a"/></linearGradient>
   <linearGradient id="fr-silver" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".4" stop-color="#a8b0bc"/><stop offset=".6" stop-color="#eef2f6"/><stop offset="1" stop-color="#7a828e"/></linearGradient>
   <linearGradient id="fr-bronze" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2c08a"/><stop offset=".45" stop-color="#a8642a"/><stop offset=".6" stop-color="#e0a066"/><stop offset="1" stop-color="#6a3a14"/></linearGradient>
@@ -223,7 +213,7 @@ function frameSVG(kind, s, member, look) {
     const ny = y + fh + (s.ch - fh) / 2;
     const nameColor = s.side === "npcs" ? (hostile ? "#7a1010" : member.disposition === 0 ? "#6e5a14" : "#145a32") : "#3c240e";
     const label = esc(member.name.length > 16 ? `${member.name.slice(0, 15)}…` : member.name);
-    const fsz = Math.max(10, cw * 0.13);
+    const fsz = Math.max(10, Math.min(cw * 0.13, (s.S ?? 100) * 0.2));
     const tw = Math.min(cw * 1.1, (label.length * fsz * 0.58) + (fsz * 1.2));
     out += `<rect x="${x + (cw / 2) - (tw / 2)}" y="${ny - (fsz * 0.75)}" width="${tw}" height="${fsz * 1.5}" rx="3" fill="${nameColor}" opacity=".9"/>
       <text x="${x + (cw / 2)}" y="${ny + (fsz * 0.35)}" font-family="Georgia, 'Times New Roman', serif" font-weight="bold" font-size="${fsz}" fill="#fbe9b8" text-anchor="middle">${label}</text>`;
@@ -235,19 +225,20 @@ export function buildSVG(look, L, members) {
   const byId = new Map(members.map(m => [m.id, m]));
   const sheetX = L.endW;
   const sheetY = L.rollExtra;
-  const textColor = ["couro", "madeira", "pedra", "metal", "estandarte", "arcano", "holografico", "neon", "estrelas", "vidro", "nenhum"].includes(look.bg) ? "#fbe9c8" : "#4a2e12";
+  const TEXT = { pergaminho: "#4a2e12", queimado: "#3e240c", papiro: "#4a3510", nautico: "#2e3e4e", couro: "#fbe6c2", madeira: "#fbe6c2", pedra: "#f2f0ea", metal: "#ffffff", estandarte: "#ffe6a8", holografico: "#bff6ff", nenhum: "#ffffff" };
+  const textColor = TEXT[look.bg] ?? "#4a2e12";
   const parts = [];
-  parts.push(sheetSVG(look.bg, sheetX, sheetY, L.sheetW, L.sheetH, L.S));
-  if ( BACKGROUNDS[look.bg]?.ends === "scroll" ) parts.push(rollsSVG(L));
+  /* painted backgrounds (painter.mjs) go under the SVG; only the sci-fi panel is SVG */
+  if ( look.bg === "holografico" ) parts.push(sheetSVG(look.bg, sheetX, sheetY, L.sheetW, L.sheetH, L.S));
   if ( look.title ) parts.push(`<text x="${L.W / 2}" y="${sheetY + (L.S * 0.5)}" font-family="Georgia, serif" font-weight="bold" font-size="${L.S * 0.32}" letter-spacing="3" fill="${textColor}" text-anchor="middle">${esc(look.title.toUpperCase())}</text>`);
-  if ( L.labelRow && look.npcLabel ) parts.push(`<text x="${(L.npcX0 + L.npcX1) / 2}" y="${L.slots.find(s => s.side === "npcs").y - (L.S * 0.1)}" font-family="Georgia, serif" font-weight="bold" font-size="${L.S * 0.17}" letter-spacing="2" fill="${textColor}" opacity=".85" text-anchor="middle">${esc(look.npcLabel.toUpperCase())}</text>`);
+  if ( L.labelRow && look.npcLabel ) parts.push(`<text x="${(L.npcX0 + L.npcX1) / 2}" y="${L.labelY}" font-family="Georgia, serif" font-weight="bold" font-size="${L.S * 0.17}" letter-spacing="2" fill="${textColor}" opacity=".85" text-anchor="middle">${esc(look.npcLabel.toUpperCase())}</text>`);
   if ( L.divX ) parts.push(`<line x1="${L.divX}" y1="${sheetY + (L.S * 0.3)}" x2="${L.divX}" y2="${sheetY + L.sheetH - (L.S * 0.25)}" stroke="${textColor}" stroke-opacity=".45" stroke-width="3" stroke-linecap="round"/>`);
   for ( const s of L.slots ) parts.push(frameSVG(look.frame, s, byId.get(s.id) ?? { name: "" }, look));
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${L.W}" height="${L.H}" viewBox="0 0 ${L.W} ${L.H}"><defs>${FRAME_DEFS}</defs>${parts.join("")}</svg>`;
 }
 
 /** SVG → WebP file. */
-export async function rasterize(svg, W, H, name, scale = 2) {
+export async function rasterize(svg, W, H, name, scale = 2, look = null, L = null) {
   const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
   try {
     const img = await new Promise((res, rej) => {
@@ -259,7 +250,14 @@ export async function rasterize(svg, W, H, name, scale = 2) {
     const cv = document.createElement("canvas");
     cv.width = Math.round(W * scale);
     cv.height = Math.round(H * scale);
-    cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+    const ctx = cv.getContext("2d");
+    if ( look && L ) {
+      ctx.save();
+      ctx.scale(scale, scale);
+      paintBackground(ctx, look.bg, L, 11);
+      ctx.restore();
+    }
+    ctx.drawImage(img, 0, 0, cv.width, cv.height);
     const blob = await new Promise(res => cv.toBlob(res, "image/webp", 0.92));
     if ( !blob ) throw new Error("O navegador não gerou a imagem do pergaminho.");
     return new File([blob], `${name}.${blob.type === "image/webp" ? "webp" : "png"}`, { type: blob.type });

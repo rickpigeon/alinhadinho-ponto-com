@@ -4,7 +4,8 @@
  */
 import { MODULE_ID, MODULE_TITLE, getBoard, isPlayerActor, memberFromActor, memberFromToken, mutate } from "./store.mjs";
 import { BACKGROUNDS, FRAMES } from "./looks.mjs";
-import { bringDialog, relayout, releaseMember, removeScroll, scrollTile, setMemberTokenHidden } from "./scroll.mjs";
+import { bringDialog, relayout, releaseMember, removeScroll, resizeMember, scrollTile, setMemberTokenHidden } from "./scroll.mjs";
+import { memberSize } from "./store.mjs";
 import { guard, guardActions } from "./errors.mjs";
 
 const { ApplicationV2 } = foundry.applications.api;
@@ -22,7 +23,7 @@ export class ManagerApp extends ApplicationV2 {
       bring: ManagerApp.#onBring, redraw: ManagerApp.#onRedraw, putAway: ManagerApp.#onPutAway, dissolve: ManagerApp.#onDissolve,
       addSelected: ManagerApp.#onAddSelected, addPlayers: ManagerApp.#onAddPlayers,
       remove: ManagerApp.#onRemove, up: ManagerApp.#onUp, down: ManagerApp.#onDown, hideMember: ManagerApp.#onHideMember,
-      carry: ManagerApp.#onCarry, swap: ManagerApp.#onSwap, clearNpcs: ManagerApp.#onClearNpcs, refresh: ManagerApp.#onRefresh
+      carry: ManagerApp.#onCarry, sizeUp: ManagerApp.#onSizeUp, sizeDown: ManagerApp.#onSizeDown, sizeReset: ManagerApp.#onSizeReset, swap: ManagerApp.#onSwap, clearNpcs: ManagerApp.#onClearNpcs, refresh: ManagerApp.#onRefresh
     })
   };
 
@@ -51,6 +52,7 @@ export class ManagerApp extends ApplicationV2 {
       <img src="${esc(m.img || m.portrait)}" alt="">
       <span class="ali-rname">${disp}${esc(m.name)}<small>${esc(where)}</small></span>
       ${side === "npcs" ? `<button type="button" data-action="carry" class="${m.carry ? "active" : ""}" data-tooltip="${m.carry ? "Vai junto com o grupo" : "Fica na cena"}"><i class="fa-solid ${m.carry ? "fa-person-walking-luggage" : "fa-anchor"}"></i></button>` : ""}
+      <span class="ali-size" data-tooltip="Tamanho desta carta (espaços)${m.size ? "" : " — segue o pergaminho"}"><button type="button" data-action="sizeDown"><i class="fa-solid fa-minus"></i></button><b class="${m.size ? "ali-own" : ""}">${String(memberSize(m, getBoard().look)).replace(".", ",")}</b><button type="button" data-action="sizeUp"><i class="fa-solid fa-plus"></i></button>${m.size ? `<button type="button" data-action="sizeReset" data-tooltip="Voltar ao tamanho do pergaminho"><i class="fa-solid fa-rotate-left"></i></button>` : ""}</span>
       <button type="button" data-action="up" data-tooltip="Para a esquerda"><i class="fa-solid fa-arrow-up"></i></button>
       <button type="button" data-action="down" data-tooltip="Para a direita"><i class="fa-solid fa-arrow-down"></i></button>
       <button type="button" data-action="swap" data-tooltip="${side === "party" ? "Passar para NPCs" : "Passar para o grupo"}"><i class="fa-solid fa-right-left"></i></button>
@@ -98,7 +100,7 @@ export class ManagerApp extends ApplicationV2 {
         <div class="ali-grid">
           <label>Fundo<select data-look="bg">${Object.entries(BACKGROUNDS).map(([k, v]) => opt(k, v.label, k === l.bg)).join("")}</select></label>
           <label>Moldura<select data-look="frame">${Object.entries(FRAMES).map(([k, v]) => opt(k, v.label, k === l.frame)).join("")}</select></label>
-          <label>Tamanho dos tokens <output>${Number(l.slot).toFixed(2)}</output><input type="range" data-look="slot" min="0.5" max="4" step="0.25" value="${l.slot}"></label>
+          <label data-tooltip="Tamanho padrão das cartas; cada carta pode ter o seu (− / + na lista ou no HUD do token)">Tamanho das cartas <output>${Number(l.slot).toFixed(2)}</output><input type="range" data-look="slot" min="0.5" max="4" step="0.25" value="${l.slot}"></label>
           <label class="ali-check"><input type="checkbox" data-look="lock" ${l.lock ? "checked" : ""}> Tokens fixos no pergaminho (travados)</label>
           <label>Título<input type="text" data-look="title" value="${esc(l.title)}" placeholder="(sem título)"></label>
           <label>Nome da área de NPCs<input type="text" data-look="npcLabel" value="${esc(l.npcLabel)}"></label>
@@ -257,6 +259,18 @@ export class ManagerApp extends ApplicationV2 {
       const [m] = b[side].splice(i, 1);
       b[side === "party" ? "npcs" : "party"].push(m);
     });
+  }
+
+  static async #onSizeUp(event, target) {
+    await resizeMember(target.closest("[data-mid]").dataset.mid, 0.25);
+  }
+
+  static async #onSizeDown(event, target) {
+    await resizeMember(target.closest("[data-mid]").dataset.mid, -0.25);
+  }
+
+  static async #onSizeReset(event, target) {
+    await resizeMember(target.closest("[data-mid]").dataset.mid, null);
   }
 
   static async #onClearNpcs() {
